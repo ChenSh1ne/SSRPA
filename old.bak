@@ -1,0 +1,66 @@
+#!/usr/bin/env python
+# -*- coding:utf-8 -*-
+"""Population Analysis With SSR Markers"""
+
+__version__ = '0.1.0.0210_alpha'
+
+import os
+import sys
+import re
+if re.search(r'192.168.0.6', os.environ.get('SSH_CONNECTION', '')):
+        sys.path = sys.path[0:1] + sys.path[5:]
+
+import argparse
+import logging
+import subprocess
+import random
+import multiprocessing
+# from content import runStructure, dendrogram, numericalize
+from pautils import runStructure, dendrogram, numericalize, utils,autoCLUMPP
+
+
+def run_harverter(config):
+    str_result_dir = os.path.join(config['report'],'structure')
+    outdir = os.path.join(config['report'],'strharvest')
+    subprocess.call("python /home/wuj/bin/SSRPop/structureHarvester/structureHarvester.py --dir=%s --out=%s --evanno --clumpp" %(str_result_dir,outdir), shell=True)
+
+
+
+
+if __name__ == '__main__':
+    utils._help()
+    logging.basicConfig(level=logging.INFO,
+                        filename='SSRPA.log',
+                        filemode='w',
+                        format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
+    logging.info('--- Analysis start ---')
+    parser = argparse.ArgumentParser(description='Population Analysis With SSR Markers')
+    parser.add_argument('-conf', dest = 'configfile', action = 'store', help = 'config file')
+    args = parser.parse_args()
+
+    configfile = args.configfile
+    logging.info('config file %s loaded', configfile)
+    config = utils.read_config(configfile)
+
+    # Raw SSR data preprocessing
+    numericalize.data_prepare(config)
+    logging.info('raw ssr data transfered to formatted data')
+
+    # Structure Analysis
+    p1 = multiprocessing.Process(target=runStructure.run_in_parellel, args=(config,))
+
+    # dendrogram
+    p2 = multiprocessing.Process(target=dendrogram.poppr_process, args=(config,))
+
+    p1.start()
+    p2.start()
+
+    p1.join() #阻塞当前进程，直到调用join方法的那个进程执行完，再继续执行当前进程
+    p2.join()
+    runStructure.run_in_parellel(config)
+    if not p1.is_alive():
+        run_harverter(config)
+        autoCLUMPP.str_visualize(config)
+    logging.info('--- Analysis finished ---')
+    print 'Analysis done!'
+
